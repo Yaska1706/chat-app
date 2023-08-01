@@ -17,7 +17,7 @@ func main() {
 	go wsServer.Run()
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		client.ServeWS(w, r)
+		client.ServeWS(wsServer, w, r)
 	})
 	fs := http.FileServer(http.Dir("./public"))
 	http.Handle("/", fs)
