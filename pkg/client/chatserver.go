@@ -5,6 +5,7 @@ type WsServer struct {
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan []byte
+	rooms      map[*Room]bool
 }
 
 func NewWebSocketServer() *WsServer {
@@ -13,6 +14,7 @@ func NewWebSocketServer() *WsServer {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte),
+		rooms:      make(map[*Room]bool),
 	}
 }
 
@@ -42,4 +44,26 @@ func (s *WsServer) broadcastToClients(message []byte) {
 	for client := range s.clients {
 		client.send <- message
 	}
+}
+
+func (s *WsServer) findRoomByName(name string) *Room {
+
+	var foundRoom *Room
+	for room := range s.rooms {
+		if room.GetName() == name {
+			foundRoom = room
+			break
+		}
+	}
+
+	return foundRoom
+}
+
+func (s *WsServer) createRoom(name string) *Room {
+	newRoom := NewRoom(name)
+	go newRoom.Run()
+
+	s.rooms[newRoom] = true
+
+	return newRoom
 }
