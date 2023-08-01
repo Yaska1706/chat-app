@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -29,24 +30,33 @@ type Client struct {
 	conn     *websocket.Conn
 	wsServer *WsServer
 	send     chan []byte
+	rooms    map[*Room]bool
+	Name     string `json:"name"`
 }
 
-func newClient(conn *websocket.Conn, wsServer *WsServer) *Client {
+func newClient(conn *websocket.Conn, wsServer *WsServer, name string) *Client {
 	return &Client{
 		conn:     conn,
 		wsServer: wsServer,
 		send:     make(chan []byte),
+		rooms:    make(map[*Room]bool),
+		Name:     name,
 	}
 }
 
 func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
+	name, ok := r.URL.Query()["name"]
+	if !ok || len(name[0]) < 1 {
+		log.Println("URL Param 'name' is missing")
+		return
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
-	client := newClient(conn, wsServer)
+	client := newClient(conn, wsServer, name[0])
 
 	go client.readPump()
 	go client.writePump()
@@ -54,6 +64,9 @@ func ServeWS(wsServer *WsServer, w http.ResponseWriter, r *http.Request) {
 
 func (c *Client) disconnect() {
 	c.wsServer.unregister <- c
+	for room := range c.rooms {
+		room.unregister <- c
+	}
 	close(c.send)
 	c.conn.Close()
 }
@@ -77,7 +90,7 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		c.wsServer.broadcast <- jsonMessage
+		c.handleNewMessage(jsonMessage)
 	}
 }
 
@@ -122,4 +135,47 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) handleNewMessage(jsonMessage []byte) {
+	var message Message
+	if err := json.Unmarshal(jsonMessage, &message); err != nil {
+		log.Printf("Unmarsha() : %s", err)
+		return
+	}
+
+	message.Sender = c
+
+	switch message.Action {
+	case SendMessageAction:
+		roomName := message.Target
+		if room := c.wsServer.findRoomByName(roomName); room != nil {
+			room.broadcast <- &message
+		}
+	case JoinAction:
+		c.handleJoinRoomMessage(message)
+	case LeaveAction:
+		c.handleLeaveRoomMessage(message)
+	}
+}
+
+func (c *Client) handleJoinRoomMessage(message Message) {
+	roomName := message.Target
+
+	room := c.wsServer.findRoomByName(roomName)
+	if room == nil {
+		room = c.wsServer.createRoom(roomName)
+	}
+	c.rooms[room] = true
+
+	room.register <- c
+}
+func (c *Client) handleLeaveRoomMessage(message Message) {
+	room := c.wsServer.findRoomByName(message.Target)
+	delete(c.rooms, room)
+	room.unregister <- c
+}
+
+func (c *Client) GetName() string {
+	return c.Name
 }
