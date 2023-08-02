@@ -29,9 +29,11 @@ var (
 type Client struct {
 	conn     *websocket.Conn
 	wsServer *WsServer
-	send     chan []byte
-	rooms    map[*Room]bool
-	Name     string `json:"name"`
+
+	send  chan []byte
+	rooms map[*Room]bool
+
+	Name string `json:"name"`
 }
 
 func newClient(conn *websocket.Conn, wsServer *WsServer, name string) *Client {

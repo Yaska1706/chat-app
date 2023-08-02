@@ -1,5 +1,9 @@
 package client
 
+import "fmt"
+
+const welcomeMessage = "%s joined the room"
+
 type Room struct {
 	name       string
 	clients    map[*Client]bool
@@ -29,6 +33,7 @@ func (r *Room) Run() {
 	}
 }
 func (r *Room) registerClientToRoom(client *Client) {
+	r.notifyClientJoined(client)
 	r.clients[client] = true
 }
 
@@ -45,4 +50,14 @@ func (r *Room) broadcastToRoom(message []byte) {
 
 func (r *Room) GetName() string {
 	return r.name
+}
+
+func (r *Room) notifyClientJoined(client *Client) {
+	message := &Message{
+		Action:  SendMessageAction,
+		Target:  r.name,
+		Message: fmt.Sprintf(welcomeMessage, client.GetName()),
+	}
+
+	r.broadcastToRoom(message.Encode())
 }
